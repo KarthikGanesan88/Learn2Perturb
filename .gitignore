@@ -1,2 +1,9 @@
 # ignore model repo
 /model_repo/
+/data/*
+data/
+/output/
+output/
+
+__pycache__/
+.idea/*

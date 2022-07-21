@@ -3,7 +3,10 @@
 '''
 
 import torch
+from tqdm.auto import tqdm
+
 from attacks.pgd import pgd
+
 
 def train(model, trainloader, epoch, optimizer1, optimizer2, criterion, layers, model_sigma_maps, args):
     model.train()
@@ -18,9 +21,9 @@ def train(model, trainloader, epoch, optimizer1, optimizer2, criterion, layers, 
         for layer in layers:
             for block in layer:
                 block.put_noise(True)
-        
+
         harmonic = 0.0
-        for i in range(1, epoch - args.noise_add_delay +1):
+        for i in range(1, epoch - args.noise_add_delay + 1):
             harmonic += 1 / i
 
     if epoch in args.lr_schedule:
@@ -28,14 +31,14 @@ def train(model, trainloader, epoch, optimizer1, optimizer2, criterion, layers, 
             g['lr'] *= 0.1
         for g in optimizer2.param_groups:
             g['lr'] *= 0.1
-    
+
     w_loss = 0.0
     theta_loss = 0.0
     total_loss = 0.0
-    
-    for itr, data in enumerate(trainloader):
 
-        if epoch >= args.noise_add_delay:
+    for itr, data in enumerate(tqdm(trainloader, leave=False)):
+
+        if epoch > args.noise_add_delay:
             coef = args.gamma / harmonic
             sigma_map1 = model_sigma_maps[0]
             reg_term = -coef * torch.sqrt(sigma_map1)
@@ -46,15 +49,15 @@ def train(model, trainloader, epoch, optimizer1, optimizer2, criterion, layers, 
                 loss2 += reg_loss
 
             theta_loss = -loss2.item()
-            
+
             optimizer2.zero_grad()
             loss2.backward()
             optimizer2.step()
 
         inputs, labels = data[0], data[1]
         if torch.cuda.is_available():
-            inputs.cuda()
-            labels.cuda()
+            inputs = inputs.cuda()
+            labels = labels.cuda()
 
         outputs = model(inputs)
 
@@ -83,12 +86,10 @@ def train(model, trainloader, epoch, optimizer1, optimizer2, criterion, layers, 
         for sigma_map in model_sigma_maps:
             sigma_map.data = torch.clamp(sigma_map.data, 0.01)
 
+        # if itr % 100 == 99:  # print every 2000 mini-batches
+        #     print('        [%d, %5d] total-loss: %.9f      w-loss: %.9f      theta-loss: %.9f' %
+        #           (epoch + 1, itr, total_loss / 100, w_loss / 100, theta_loss / 100))
 
-        if itr % 100 == 99:    # print every 2000 mini-batches
-            print('        [%d, %5d] total-loss: %.9f      w-loss: %.9f      theta-loss: %.9f' %
-                    (epoch + 1, itr, total_loss / 100, w_loss / 100, theta_loss / 100))
-            
             total_loss = 0.0
             w_loss = 0.0
             theta_loss = 0.0
-
